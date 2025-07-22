@@ -1,0 +1,39 @@
+name: 更新文件索引
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**'                  # 监控所有文件变动
+      - '!.github/workflows/**' # 排除自身触发循环
+
+jobs:
+  update-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: 生成文件列表
+        run: |
+          # 排除特定文件
+          EXCLUDE=(".git" ".github" "README.md" "LICENSE" ".gitignore" "file-list.json")
+          
+          # 生成JSON格式索引
+          echo '[' > file-list.json
+          find . -type f \( ! -path "./.git/*" ! -name "file-list.json" \) \
+            -printf '  {"name": "%f", "size": %s, "path": "%p"},\n' \
+            | grep -vF "${EXCLUDE[@]/#/-e }" >> file-list.json
+          sed -i '$ s/,$//' file-list.json
+          echo ']' >> file-list.json
+          
+          # 验证生成结果
+          cat file-list.json
+          jq empty file-list.json # 验证JSON格式
+
+      - name: 提交变更
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add file-list.json
+          git diff --cached --quiet || git commit -m "自动更新文件索引 [skip ci]"
+          git push
